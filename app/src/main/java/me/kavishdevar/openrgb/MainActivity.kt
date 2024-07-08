@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.StrictMode
+import android.os.StrictMode.ThreadPolicy
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import androidx.core.graphics.blue
 import androidx.core.graphics.green
@@ -46,10 +49,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val sharedPref = this.getSharedPreferences("servers", Context.MODE_PRIVATE)
 
-        // Focusing on only 1 server (PC) at first but will use an array to avoid complications later.
-
-        val servers = sharedPref.all.keys
-
+        val policy = ThreadPolicy.Builder().permitAll().build()
+        StrictMode.setThreadPolicy(policy)
         enableEdgeToEdge()
         setContent {
             OpenRGBTheme {
@@ -65,8 +66,70 @@ class MainActivity : ComponentActivity() {
 @Composable
 // Should not be passing the whole SharedPreferences, but doing it anyways.
 fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
+    val showNewDeviceDialog = remember { mutableStateOf(false) }
     val servers=sharedPref.all.keys
     if (servers.size==0) {
+       showNewDeviceDialog.value = true
+    }
+    else {
+        // Focusing on only 1 server (PC) at first but will use an array to avoid complications later.
+        val selectedServer = remember { mutableStateOf(servers.first()) }
+        val ipPort = sharedPref.getString(selectedServer.value, "192.168.1.90:6742")!!
+        val ipToConnect = ipPort.split(":")[0]
+        val portToConnect = ipPort.split(":")[1].toInt()
+        Log.d("me.kavishdevar.openrgb", "Connecting to ${selectedServer.value}. IP address is $ipPort")
+        val client = remember {
+            mutableStateOf(
+                OpenRGBClient(
+                    ipToConnect,
+                    portToConnect,
+                    android.os.Build.MODEL.toString()
+                )
+            )
+        }
+
+        val clientConnected = remember { mutableStateOf(false) }
+        // Should NOT start a Coroutine in a view, but doing it anyways.
+        rememberCoroutineScope().launch {
+            Log.d("me.kavishdevar.openrgb", "Trying to connect")
+            try {
+                client.value.connect()
+                clientConnected.value = true
+                Log.d("me.kavishdevar.openrgb", "Connected successfully!")
+            } catch (e: IOException) {
+                e.printStackTrace()
+                if (e.message?.contains("ECONNREFUSED") == true) {
+                    clientConnected.value = false
+                }
+            }
+        }
+        if (clientConnected.value) {
+            if (client.value.controllerCount != 0) {
+                if (client.value.getDeviceController(0).leds[0].value.red
+                    and client.value.getDeviceController(0).leds[0].value.green
+                    and client.value.getDeviceController(0).leds[0].value.blue == 0
+                ) {
+                    Log.d("me.kavishdevar.openrgb", "lights are off")
+                } else {
+                    Log.d("me.kavishdevar.openrgb", "lights are on")
+                }
+            }
+            CreateDeviceCards(client.value)
+        } else {
+            Column (modifier.padding(100.dp)) {
+                Log.d(
+                    "me.kavishdevar.openrgb",
+                    "Couldn't connect! Check server and details:\n$ipPort"
+                )
+                Text("Was trying to connect to $ipPort, but was unsuccessful, check server!\n Made an error?")
+                Button({
+                    sharedPref.edit().remove(selectedServer.value)
+                        .apply(); showNewDeviceDialog.value = true
+                }) { Text("Edit server details")}
+            }
+        }
+    }
+    if (showNewDeviceDialog.value) {
         Box(
             modifier = Modifier
                 .padding(30.dp),
@@ -157,50 +220,11 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
                 restart.value = false
             }
         }
+        showNewDeviceDialog.value = false
     }
-    else {
-        val selectedServer = remember { mutableStateOf(servers.first()) }
-        val ipPort = sharedPref.getString(selectedServer.value, "192.168.1.90:6742")!!
-        val ipToConnect = ipPort.split(":")[0]
-        val portToConnect = ipPort.split(":")[1].toInt()
+}
 
-        val client = remember {
-            mutableStateOf(
-                OpenRGBClient(
-                    ipToConnect,
-                    portToConnect,
-                    android.os.Build.MODEL.toString()
-                )
-            )
-        }
+@Composable
+fun CreateDeviceCards(client: OpenRGBClient) {
 
-        val clientConnected = remember { mutableStateOf(false) }
-        // Should NOT start a Coroutine in a view, but doing it anyways.
-        rememberCoroutineScope().launch {
-            try {
-                client.value.connect()
-                clientConnected.value = true
-
-            } catch (e: IOException) {
-                e.printStackTrace()
-                if (e.message?.contains("ECONNREFUSED") == true) {
-                    clientConnected.value = false
-                }
-            }
-        }
-        Log.d("me.kavishdevar.openrgb", "clientConnected: $clientConnected.value")
-        if (clientConnected.value) {
-            if (client.value.controllerCount != 0) {
-                if (client.value.getDeviceController(0).leds[0].value.red
-                    and client.value.getDeviceController(0).leds[0].value.green
-                    and client.value.getDeviceController(0).leds[0].value.blue == 0
-                ) {
-                    Log.d("me.kavishdevar.openrgb", "lights are off")
-                }
-                else {
-                    Log.d("me.kavishdevar.openrgb", "lights are on")
-                }
-            }
-        }
-    }
 }
