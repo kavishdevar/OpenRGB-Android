@@ -30,16 +30,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.core.content.edit
 import androidx.core.graphics.blue
 import androidx.core.graphics.green
 import androidx.core.graphics.red
 import io.gitlab.mguimard.openrgb.client.OpenRGBClient
-import io.gitlab.mguimard.openrgb.entity.OpenRGBDevice
-import io.gitlab.mguimard.openrgb.examples.ListDevices
 import kotlinx.coroutines.launch
 import me.kavishdevar.openrgb.ui.theme.OpenRGBTheme
 import java.io.IOException
@@ -122,10 +117,28 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
                     "Couldn't connect! Check server and details:\n$ipPort"
                 )
                 Text("Was trying to connect to $ipPort, but was unsuccessful, check server!\n Made an error?")
-                Button({
+                Row {
+                    Button({
                     sharedPref.edit().remove(selectedServer.value)
                         .apply(); showNewDeviceDialog.value = true
-                }) { Text("Edit server details")}
+                    }) { Text("Edit server details")}
+                    Button({
+                        val t = Thread {
+                            Log.d("me.kavishdevar.openrgb", "Trying to connect")
+                            try {
+                                client.value.connect()
+                                clientConnected.value = true
+                                Log.d("me.kavishdevar.openrgb", "Connected successfully!")
+                            } catch (e: IOException) {
+                                e.printStackTrace()
+                                if (e.message?.contains("ECONNREFUSED") == true) {
+                                    clientConnected.value = false
+                                }
+                            }
+                        }
+                        t.start()
+                    }) { Text("Retry")}
+                }
             }
         }
     }
