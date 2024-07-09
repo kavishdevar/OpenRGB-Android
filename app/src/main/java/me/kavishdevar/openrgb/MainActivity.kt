@@ -103,6 +103,10 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
                 }
             }
         }
+        val readyToCreate = remember { mutableStateOf(false) }
+        if (readyToCreate.value) {
+            CreateDeviceCards(client.value)
+        }
         if (clientConnected.value) {
             if (client.value.controllerCount != 0) {
                 if (client.value.getDeviceController(0).leds[0].value.red
@@ -114,7 +118,7 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
                     Log.d("me.kavishdevar.openrgb", "lights are on")
                 }
             }
-            CreateDeviceCards(client.value)
+            readyToCreate.value = true
         } else {
             Column (modifier.padding(100.dp)) {
                 Log.d(
@@ -133,6 +137,7 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
                                 client.value.connect()
                                 clientConnected.value = true
                                 Log.d("me.kavishdevar.openrgb", "Connected successfully!")
+                                readyToCreate.value = true
                             } catch (e: IOException) {
                                 e.printStackTrace()
                                 if (e.message?.contains("ECONNREFUSED") == true) {
