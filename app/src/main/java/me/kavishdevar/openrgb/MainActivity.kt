@@ -61,18 +61,23 @@ class MainActivity : ComponentActivity() {
 @Composable
 // Should not be passing the whole SharedPreferences, but doing it anyways.
 fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
-    val showNewDeviceDialog = remember { mutableStateOf(false) }
+    val showNewServerDialog = remember { mutableStateOf(false) }
+
+    val selectedServer = remember { mutableStateOf("") }
+    var ipToConnect = "192.168.1."
+    var portToConnect = 6742
+
     val servers=sharedPref.all.keys
     if (servers.size==0) {
-       showNewDeviceDialog.value = true
+       showNewServerDialog.value = true
     }
     else {
         // Focusing on only 1 server (PC) at first but will use an array to avoid complications later.
-        val selectedServer = remember { mutableStateOf(servers.first()) }
+        selectedServer.value = servers.first()
         val ipPort = sharedPref.getString(selectedServer.value, "192.168.1.90:6742")!!
-        val ipToConnect = ipPort.split(":")[0]
-        val portToConnect = ipPort.split(":")[1].toInt()
-        Log.d("me.kavishdevar.openrgb", "Connecting to ${selectedServer.value}. IP address is $ipPort")
+        ipToConnect = ipPort.split(":")[0]
+        portToConnect = ipPort.split(":")[1].toInt()
+
         val client = remember {
             mutableStateOf(
                 OpenRGBClient(
@@ -119,8 +124,7 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
                 Text("Was trying to connect to $ipPort, but was unsuccessful, check server!\n Made an error?")
                 Row {
                     Button({
-                    sharedPref.edit().remove(selectedServer.value)
-                        .apply(); showNewDeviceDialog.value = true
+                        showNewServerDialog.value = true
                     }) { Text("Edit server details")}
                     Button({
                         val t = Thread {
@@ -142,17 +146,17 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
             }
         }
     }
-    if (showNewDeviceDialog.value) {
+    if (showNewServerDialog.value) {
         Box(
             modifier = Modifier
                 .padding(30.dp),
             contentAlignment = Alignment.Center
         ) {
 
-            val name = remember { mutableStateOf("") }
-            val ip = remember { mutableStateOf("192.168.1.") }
-            val port = remember { mutableIntStateOf(6742) }
-
+            val name = remember { mutableStateOf(selectedServer.value) }
+            val ip = remember { mutableStateOf(ipToConnect) }
+            val port = remember { mutableIntStateOf(portToConnect) }
+            sharedPref.edit().remove(selectedServer.value).apply()
             val restart = remember { mutableStateOf(false) }
 
             val buttonEnabled = remember { mutableStateOf(false) }
@@ -233,11 +237,11 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
                 restart.value = false
             }
         }
-        showNewDeviceDialog.value = false
+        showNewServerDialog.value = false
     }
 }
 
 @Composable
 fun CreateDeviceCards(client: OpenRGBClient) {
-
+    Log.d("me.kavishdevar.openrgb", "${client.controllerCount} controller(s)")
 }
