@@ -10,15 +10,20 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -29,15 +34,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.blue
 import androidx.core.graphics.green
 import androidx.core.graphics.red
 import io.gitlab.mguimard.openrgb.client.OpenRGBClient
+import io.gitlab.mguimard.openrgb.entity.OpenRGBDevice
 import kotlinx.coroutines.launch
 import me.kavishdevar.openrgb.ui.theme.OpenRGBTheme
 import java.io.IOException
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -248,5 +257,78 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
 
 @Composable
 fun CreateDeviceCards(client: OpenRGBClient) {
-    Log.d("me.kavishdevar.openrgb", "${client.controllerCount} controller(s)")
+    val controllers = mutableListOf<OpenRGBDevice>()
+    for (i in 0 until client.controllerCount) {
+       controllers.add(client.getDeviceController(i))
+    }
+
+    val deviceIndex = remember { mutableIntStateOf(0) }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+    )
+    {
+        controllers.forEach { device ->
+            OutlinedCard(
+                onClick = {
+                    deviceIndex.intValue = controllers.indexOf(device)
+                },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp)
+            )
+            {
+                Image(
+                    painter = painterResource(
+                        id = if (device.type.name.contains("LIGHT")) {
+                            R.drawable.light
+                        } else if (device.type.name.contains("MOTHERBOARD")) {
+                            R.drawable.motherboard
+                        } else if (device.type.name.contains("GAMEPAD")) {
+                            R.drawable.gamepad
+                        } else if (device.type.name.contains("KEYBOARD")) {
+                            R.drawable.keyboard
+                        } else if (device.type.name.contains("MOUSE")) {
+                            R.drawable.mouse
+                        } else {
+                            R.drawable.lightbulb
+                        }
+                    ),
+                    contentDescription = null,
+                    alignment = Alignment.CenterEnd,
+                    modifier = Modifier
+                        .size(48.dp, 48.dp)
+                        .padding(start = 16.dp, top = 8.dp)
+                )
+                Text(
+                    text = device.name.toString(),
+                    modifier = Modifier
+                        .padding(start = 16.dp, end = 16.dp, bottom = 2.dp, top = 8.dp),
+                    textAlign = TextAlign.Left,
+                    fontStyle = MaterialTheme.typography.headlineMedium.fontStyle,
+                    fontFamily = MaterialTheme.typography.headlineMedium.fontFamily,
+                    fontWeight = MaterialTheme.typography.headlineMedium.fontWeight,
+                    fontSize = MaterialTheme.typography.headlineMedium.fontSize,
+                )
+                Text(
+                    text = device.type.toString().replace("DEVICE_TYPE_", "")
+                        .lowercase()
+                        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+                    modifier = Modifier
+                        .padding(
+                            start = 16.dp,
+                            end = 16.dp,
+                            bottom = 16.dp,
+                            top = 2.dp
+                        ),
+                    textAlign = TextAlign.Left,
+                )
+
+            }
+        }
+    }
 }
