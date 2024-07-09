@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -24,14 +25,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +77,7 @@ import java.io.IOException
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val sharedPref = this.getSharedPreferences("servers", Context.MODE_PRIVATE)
@@ -70,9 +87,82 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             OpenRGBTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Main(sharedPref = sharedPref, modifier = Modifier.padding(innerPadding))
-                }
+                val snackbarHostState = remember { SnackbarHostState() }
+                val drawerState = rememberDrawerState(DrawerValue.Closed)
+                val scope = rememberCoroutineScope()
+                val navOpen = remember { mutableStateOf(false) }
+
+                Scaffold(modifier = Modifier.fillMaxSize(),
+                    snackbarHost = {
+                        SnackbarHost(hostState = snackbarHostState)
+                    },
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Text("Devices")
+                            },
+                            navigationIcon = {
+                                IconToggleButton(checked = navOpen.value, onCheckedChange = {
+                                        if (drawerState.isClosed) {
+                                            scope.launch { drawerState.open() }
+                                        } else {
+                                            scope.launch { drawerState.close() }
+                                        }
+                                }) {
+                                    AnimatedContent(
+                                        targetState = drawerState.isOpen,
+                                        label = "DrawerToggle"
+                                    ) {
+                                        if (it) Icon(
+                                            painterResource(id = R.drawable.menu_open),
+                                            null
+                                        )
+                                        else Icon(Icons.Default.Menu, null)
+                                    }
+                                }
+                            },
+                            actions = {
+
+                                val showDropDown = remember { mutableStateOf(false) }
+
+                                IconButton(onClick = {
+                                    showDropDown.value = true
+                                }) {
+                                    Icon(Icons.Default.MoreVert, null)
+                                    DropdownMenu(
+                                        expanded = showDropDown.value,
+                                        onDismissRequest = { showDropDown.value = false }) {
+//                                        DropdownMenuItem(
+//                                            text = {
+//                                                Text("Connect to a server (without saving)")
+//                                            },
+//                                            trailingIcon = { Icon(Icons.Default.Refresh, null) },
+//                                            onClick = {
+//                                                showTempIPDialog.value = true
+//                                            }
+//                                        )
+                                    }
+                                }
+                            }
+                        )
+                    },
+                    content = { paddingValues ->
+                        ModalNavigationDrawer(
+                            modifier = Modifier.padding(paddingValues),
+                            drawerState = drawerState,
+                            drawerContent = {
+                                ModalDrawerSheet()
+                                {
+                                    Spacer(modifier = Modifier.padding(paddingValues).height(10.dp))
+                                }
+                            },
+                            content = {
+                                Main(sharedPref = sharedPref, modifier = Modifier.padding(paddingValues))
+                            }
+                        )
+                    }
+
+                )
             }
         }
     }
