@@ -237,28 +237,27 @@ fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
                     "Couldn't connect! Check server and details:\n$ipPort"
                 )
                 Text("Was trying to connect to $ipPort, but was unsuccessful, check server!\n Made an error?")
-                Row {
-                    Button({
-                        showNewServerDialog.value = true
-                    }) { Text("Edit server details")}
-                    Button({
-                        val t = Thread {
-                            Log.d("me.kavishdevar.openrgb", "Trying to connect")
-                            try {
-                                client.value.connect()
-                                clientConnected.value = true
-                                Log.d("me.kavishdevar.openrgb", "Connected successfully!")
-                                readyToCreate.value = true
-                            } catch (e: IOException) {
-                                e.printStackTrace()
-                                if (e.message?.contains("ECONNREFUSED") == true) {
-                                    clientConnected.value = false
-                                }
+
+                Button(modifier = Modifier.fillMaxWidth(), onClick = {
+                    showNewServerDialog.value = true
+                }) { Text("Edit server details")}
+                Button(modifier = Modifier.fillMaxWidth(), onClick = {
+                    val t = Thread {
+                        Log.d("me.kavishdevar.openrgb", "Trying to connect")
+                        try {
+                            client.value.connect()
+                            clientConnected.value = true
+                            Log.d("me.kavishdevar.openrgb", "Connected successfully!")
+                            readyToCreate.value = true
+                        } catch (e: IOException) {
+                            e.printStackTrace()
+                            if (e.message?.contains("ECONNREFUSED") == true) {
+                                clientConnected.value = false
                             }
                         }
-                        t.start()
-                    }) { Text("Retry")}
-                }
+                    }
+                    t.start()
+                }) { Text("Retry")}
             }
         }
     }
