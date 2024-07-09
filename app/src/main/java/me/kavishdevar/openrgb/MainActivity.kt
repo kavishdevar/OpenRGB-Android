@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -56,6 +57,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -77,7 +79,6 @@ import java.io.IOException
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val sharedPref = this.getSharedPreferences("servers", Context.MODE_PRIVATE)
@@ -87,51 +88,102 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             OpenRGBTheme {
-                val snackbarHostState = remember { SnackbarHostState() }
-                val drawerState = rememberDrawerState(DrawerValue.Closed)
-                val scope = rememberCoroutineScope()
-                val navOpen = remember { mutableStateOf(false) }
+                Main(sharedPref)
+            }
+        }
+    }
+}
 
-                Scaffold(modifier = Modifier.fillMaxSize(),
-                    snackbarHost = {
-                        SnackbarHost(hostState = snackbarHostState)
-                    },
-                    topBar = {
-                        TopAppBar(
-                            title = {
-                                Text("Devices")
-                            },
-                            navigationIcon = {
-                                IconToggleButton(checked = navOpen.value, onCheckedChange = {
-                                        if (drawerState.isClosed) {
-                                            scope.launch { drawerState.open() }
-                                        } else {
-                                            scope.launch { drawerState.close() }
-                                        }
-                                }) {
-                                    AnimatedContent(
-                                        targetState = drawerState.isOpen,
-                                        label = "DrawerToggle"
-                                    ) {
-                                        if (it) Icon(
-                                            painterResource(id = R.drawable.menu_open),
-                                            null
-                                        )
-                                        else Icon(Icons.Default.Menu, null)
-                                    }
+fun setLights(client: OpenRGBClient, status: Boolean) {
+    for (i in 0 until client.controllerCount) {
+        val controller = client.getDeviceController(i)
+        for (led in controller.leds) {
+            Log.d("ColorSet", "Setting LED ${led.name}")
+            client.updateLed(
+                i,
+                controller.leds.indexOf(led),
+                if (status) {
+                    OpenRGBColor(100, 0, 0)
+                } else {
+                    OpenRGBColor(0, 0, 0)
+                }
+            )
+        }
+
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("CoroutineCreationDuringComposition")
+@Composable
+// Should not be passing the whole SharedPreferences, but doing it anyways.
+fun Main(sharedPref: SharedPreferences) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val navOpen = remember { mutableStateOf(false) }
+
+    val lightStatus = remember { mutableStateOf(false) }
+    val showNewServerDialog = remember { mutableStateOf(false) }
+    val editing = remember { mutableStateOf(false) }
+    val selectedServer = remember { mutableStateOf("") }
+    var ipToConnect = "192.168.1."
+    var portToConnect = 6742
+    val clientConnected = remember { mutableStateOf(false) }
+    val servers=sharedPref.all.keys
+    val readyToCreate = remember { mutableStateOf(false) }
+    Scaffold(modifier = Modifier.fillMaxSize(),
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        },
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text("Devices in ${selectedServer.value}")
+                },
+                navigationIcon = {
+                    IconToggleButton(checked = navOpen.value, onCheckedChange = {
+                        if (drawerState.isClosed) {
+                            scope.launch { drawerState.open() }
+                        } else {
+                            scope.launch { drawerState.close() }
+                        }
+                    }) {
+                        AnimatedContent(
+                            targetState = drawerState.isOpen,
+                            label = "DrawerToggle"
+                        ) {
+                            if (it) Icon(
+                                painterResource(id = R.drawable.menu_open),
+                                null
+                            )
+                            else Icon(Icons.Default.Menu, null)
+                        }
+                    }
+                },
+                actions = {
+                    IconToggleButton(enabled = clientConnected.value, checked = lightStatus.value, onCheckedChange = {
+                        lightStatus.value = it
+                    }) {
+                        Icon(
+                            painterResource(
+                                id = if (lightStatus.value) {
+                                    R.drawable.lightbulb
+                                } else {
+                                    R.drawable.light_off
                                 }
-                            },
-                            actions = {
+                            ), contentDescription = null
+                        )
+                    }
+                    val showDropDown = remember { mutableStateOf(false) }
 
-                                val showDropDown = remember { mutableStateOf(false) }
-
-                                IconButton(onClick = {
-                                    showDropDown.value = true
-                                }) {
-                                    Icon(Icons.Default.MoreVert, null)
-                                    DropdownMenu(
-                                        expanded = showDropDown.value,
-                                        onDismissRequest = { showDropDown.value = false }) {
+                    IconButton(onClick = {
+                        showDropDown.value = true
+                    }) {
+                        Icon(Icons.Default.MoreVert, null)
+                        DropdownMenu(
+                            expanded = showDropDown.value,
+                            onDismissRequest = { showDropDown.value = false }) {
 //                                        DropdownMenuItem(
 //                                            text = {
 //                                                Text("Connect to a server (without saving)")
@@ -141,219 +193,233 @@ class MainActivity : ComponentActivity() {
 //                                                showTempIPDialog.value = true
 //                                            }
 //                                        )
+                        }
+                    }
+                }
+            )
+        },
+        content = { paddingValues ->
+
+            ModalNavigationDrawer(
+                modifier = Modifier.padding(paddingValues),
+                drawerState = drawerState,
+                drawerContent = {
+                    ModalDrawerSheet()
+                    {
+                        Spacer(modifier = Modifier
+                            .padding(paddingValues)
+                            .height(10.dp))
+                    }
+                },
+                content = {
+                    if (servers.size==0) {
+                        showNewServerDialog.value = true
+                    }
+                    else {
+                        // Focusing on only 1 server (PC) at first but will use an array to avoid complications later.
+                        selectedServer.value = servers.first()
+                        val ipPort = sharedPref.getString(selectedServer.value, "192.168.1.0:6742")!!
+                        ipToConnect = ipPort.split(":")[0]
+                        portToConnect = ipPort.split(":")[1].toInt()
+
+                        val client = remember {
+                            mutableStateOf(
+                                OpenRGBClient(
+                                    ipToConnect,
+                                    portToConnect,
+                                    android.os.Build.MODEL.toString()
+                                )
+                            )
+                        }
+
+
+                        // Should NOT start a Coroutine in a view, but doing it anyways.
+                        if (!editing.value) {
+                            rememberCoroutineScope().launch {
+                                Log.d("me.kavishdevar.openrgb", "Trying to connect")
+                                try {
+                                    client.value.connect()
+                                    clientConnected.value = true
+                                    Log.d("me.kavishdevar.openrgb", "Connected successfully!")
+                                } catch (e: IOException) {
+                                    e.printStackTrace()
+                                    if (e.message?.contains("ECONNREFUSED") == true) {
+                                        clientConnected.value = false
                                     }
                                 }
                             }
-                        )
-                    },
-                    content = { paddingValues ->
-                        ModalNavigationDrawer(
-                            modifier = Modifier.padding(paddingValues),
-                            drawerState = drawerState,
-                            drawerContent = {
-                                ModalDrawerSheet()
-                                {
-                                    Spacer(modifier = Modifier.padding(paddingValues).height(10.dp))
+                            if (clientConnected.value) {
+                                if (client.value.controllerCount != 0) {
+                                    if (client.value.getDeviceController(0).leds[0].value.red
+                                        and client.value.getDeviceController(0).leds[0].value.green
+                                        and client.value.getDeviceController(0).leds[0].value.blue == 0
+                                    ) {
+                                        Log.d("me.kavishdevar.openrgb", "lights are off")
+                                    } else {
+                                        Log.d("me.kavishdevar.openrgb", "lights are on")
+                                    }
                                 }
-                            },
-                            content = {
-                                Main(sharedPref = sharedPref, modifier = Modifier.padding(paddingValues))
+                                readyToCreate.value = true
+                            } else {
+                                Log.d(
+                                    "me.kavishdevar.openrgb",
+                                    "Couldn't connect! Check server and details:\n$ipPort"
+                                )
+                                Toast.makeText(LocalContext.current, "Unable to connect!", Toast.LENGTH_SHORT).show()
+
+                                Column(Modifier.padding(50.dp)) {
+
+                                    Text("Was trying to connect to $ipPort, but was unsuccessful, check server!\n Made an error?")
+
+                                    Button(modifier = Modifier.fillMaxWidth(), onClick = {
+                                        showNewServerDialog.value = true
+                                        editing.value = true
+                                    }) { Text("Edit server details") }
+                                    Button(modifier = Modifier.fillMaxWidth(), onClick = {
+                                        val t = Thread {
+                                            Log.d("me.kavishdevar.openrgb", "Trying to connect")
+                                            try {
+                                                client.value.connect()
+                                                clientConnected.value = true
+                                                Log.d(
+                                                    "me.kavishdevar.openrgb",
+                                                    "Connected successfully!"
+                                                )
+                                                readyToCreate.value = true
+                                            } catch (e: IOException) {
+                                                e.printStackTrace()
+                                                if (e.message?.contains("ECONNREFUSED") == true) {
+                                                    clientConnected.value = false
+                                                }
+                                            }
+                                        }
+                                        t.start()
+                                    }) { Text("Retry") }
+                                }
                             }
-                        )
+                        }
+                        else {
+                            showNewServerDialog.value=true
+                        }
+                        if (lightStatus.value) {
+                            setLights(client = client.value, lightStatus.value)
+                        }
+
+                        if (readyToCreate.value) {
+                            CreateDeviceCards(client.value)
+                        }
                     }
+                    if (showNewServerDialog.value) {
+                        if (editing.value) {
+                            sharedPref.edit().remove(selectedServer.value).apply()
+                        }
+                        Box(
+                            modifier = Modifier
+                                .padding(30.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val name = remember { mutableStateOf(selectedServer.value) }
+                            val ip = remember { mutableStateOf(ipToConnect) }
+                            val port = remember { mutableIntStateOf(portToConnect) }
 
-                )
-            }
-        }
-    }
-}
 
-@SuppressLint("CoroutineCreationDuringComposition")
-@Composable
-// Should not be passing the whole SharedPreferences, but doing it anyways.
-fun Main(sharedPref: SharedPreferences, modifier: Modifier) {
-    val showNewServerDialog = remember { mutableStateOf(false) }
+                            val restart = remember { mutableStateOf(false) }
 
-    val selectedServer = remember { mutableStateOf("") }
-    var ipToConnect = "192.168.1."
-    var portToConnect = 6742
-
-    val servers=sharedPref.all.keys
-    if (servers.size==0) {
-       showNewServerDialog.value = true
-    }
-    else {
-        // Focusing on only 1 server (PC) at first but will use an array to avoid complications later.
-        selectedServer.value = servers.first()
-        val ipPort = sharedPref.getString(selectedServer.value, "192.168.1.90:6742")!!
-        ipToConnect = ipPort.split(":")[0]
-        portToConnect = ipPort.split(":")[1].toInt()
-
-        val client = remember {
-            mutableStateOf(
-                OpenRGBClient(
-                    ipToConnect,
-                    portToConnect,
-                    android.os.Build.MODEL.toString()
-                )
+                            val buttonEnabled = remember { mutableStateOf(false) }
+                            if (ip.value != "") {
+                                buttonEnabled.value = true
+                            }
+                            Column {
+                                Text(
+                                    text = if (name.value=="") "Add Device" else "Edit Device",
+                                    modifier = Modifier
+                                        .padding(
+                                            start = 2.dp,
+                                            end = 2.dp,
+                                            top = 24.dp,
+                                            bottom = 8.dp
+                                        )
+                                        .align(Alignment.CenterHorizontally),
+                                    fontSize = MaterialTheme.typography.labelLarge.fontSize * 2,
+                                    fontFamily = MaterialTheme.typography.labelLarge.fontFamily,
+                                    fontWeight = MaterialTheme.typography.labelLarge.fontWeight,
+                                    fontStyle = MaterialTheme.typography.labelLarge.fontStyle,
+                                )
+                                TextField(
+                                    modifier = Modifier
+                                        .padding(8.dp)
+                                        .fillMaxWidth(),
+                                    value = name.value,
+                                    onValueChange = {
+                                        name.value = it
+                                    },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                                    label = { Text("Device Name") },
+                                    supportingText = { Text("Defaults to the IP Address") }
+                                )
+                                Row {
+                                    TextField(
+                                        modifier = Modifier
+                                            .padding(start = 8.dp, top = 8.dp, end = 8.dp)
+                                            .fillMaxWidth(0.7f),
+                                        value = ip.value,
+                                        onValueChange = {
+                                            ip.value = it
+                                        },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        label = { Text("IP Address") }
+                                    )
+                                    TextField(
+                                        modifier = Modifier
+                                            .padding(end = 8.dp, top = 8.dp, bottom = 8.dp),
+                                        value = port.intValue.toString(),
+                                        onValueChange = {
+                                            port.intValue = it.toInt()
+                                        },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        label = { Text("Port") }
+                                    )
+                                }
+                                Button(
+                                    enabled = buttonEnabled.value,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            start = 10.dp,
+                                            end = 10.dp,
+                                            top = 10.dp,
+                                            bottom = 28.dp
+                                        ),
+                                    onClick = {
+                                        Log.d("me.kavishdevar.openrgb","Show new-server dialog box")
+                                        val devName = if (name.value == "") {
+                                            ip.value
+                                        } else {
+                                            name.value
+                                        }
+                                        sharedPref
+                                            .edit()
+                                            .putString(devName, "${ip.value}:${port.intValue}")
+                                            .apply()
+                                        restart.value = true
+                                        editing.value=false
+                                    }
+                                )
+                                {
+                                    Text("Save")
+                                }
+                            }
+                            if (restart.value) {
+                                Main(sharedPref =  sharedPref)
+                                restart.value = false
+                            }
+                        }
+                        showNewServerDialog.value = false
+                    }
+                }
             )
         }
-
-        val clientConnected = remember { mutableStateOf(false) }
-        // Should NOT start a Coroutine in a view, but doing it anyways.
-        rememberCoroutineScope().launch {
-            Log.d("me.kavishdevar.openrgb", "Trying to connect")
-            try {
-                client.value.connect()
-                clientConnected.value = true
-                Log.d("me.kavishdevar.openrgb", "Connected successfully!")
-            } catch (e: IOException) {
-                e.printStackTrace()
-                if (e.message?.contains("ECONNREFUSED") == true) {
-                    clientConnected.value = false
-                }
-            }
-        }
-        val readyToCreate = remember { mutableStateOf(false) }
-        if (readyToCreate.value) {
-            CreateDeviceCards(client.value)
-        }
-        if (clientConnected.value) {
-            if (client.value.controllerCount != 0) {
-                if (client.value.getDeviceController(0).leds[0].value.red
-                    and client.value.getDeviceController(0).leds[0].value.green
-                    and client.value.getDeviceController(0).leds[0].value.blue == 0
-                ) {
-                    Log.d("me.kavishdevar.openrgb", "lights are off")
-                } else {
-                    Log.d("me.kavishdevar.openrgb", "lights are on")
-                }
-            }
-            readyToCreate.value = true
-        } else {
-            Column (modifier.padding(100.dp)) {
-                Log.d(
-                    "me.kavishdevar.openrgb",
-                    "Couldn't connect! Check server and details:\n$ipPort"
-                )
-                Text("Was trying to connect to $ipPort, but was unsuccessful, check server!\n Made an error?")
-
-                Button(modifier = Modifier.fillMaxWidth(), onClick = {
-                    showNewServerDialog.value = true
-                }) { Text("Edit server details")}
-                Button(modifier = Modifier.fillMaxWidth(), onClick = {
-                    val t = Thread {
-                        Log.d("me.kavishdevar.openrgb", "Trying to connect")
-                        try {
-                            client.value.connect()
-                            clientConnected.value = true
-                            Log.d("me.kavishdevar.openrgb", "Connected successfully!")
-                            readyToCreate.value = true
-                        } catch (e: IOException) {
-                            e.printStackTrace()
-                            if (e.message?.contains("ECONNREFUSED") == true) {
-                                clientConnected.value = false
-                            }
-                        }
-                    }
-                    t.start()
-                }) { Text("Retry")}
-            }
-        }
-    }
-    if (showNewServerDialog.value) {
-        Box(
-            modifier = Modifier
-                .padding(30.dp),
-            contentAlignment = Alignment.Center
-        ) {
-
-            val name = remember { mutableStateOf(selectedServer.value) }
-            val ip = remember { mutableStateOf(ipToConnect) }
-            val port = remember { mutableIntStateOf(portToConnect) }
-            sharedPref.edit().remove(selectedServer.value).apply()
-            val restart = remember { mutableStateOf(false) }
-
-            val buttonEnabled = remember { mutableStateOf(false) }
-            if (ip.value != "") {
-                buttonEnabled.value = true
-            }
-            Column {
-                Text(
-                    text = "Add Device",
-                    modifier = Modifier
-                        .padding(start = 2.dp, end = 2.dp, top = 24.dp, bottom = 8.dp)
-                        .align(Alignment.CenterHorizontally),
-                    fontSize = MaterialTheme.typography.labelLarge.fontSize * 2,
-                    fontFamily = MaterialTheme.typography.labelLarge.fontFamily,
-                    fontWeight = MaterialTheme.typography.labelLarge.fontWeight,
-                    fontStyle = MaterialTheme.typography.labelLarge.fontStyle,
-                )
-                TextField(
-                    modifier = Modifier
-                        .padding(8.dp)
-                        .fillMaxWidth(),
-                    value = name.value,
-                    onValueChange = {
-                        name.value = it
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                    label = { Text("Device Name") },
-                    supportingText = { Text("Defaults to the IP Address") }
-                )
-                Row {
-                    TextField(
-                        modifier = Modifier
-                            .padding(start = 8.dp, top = 8.dp, end = 8.dp)
-                            .fillMaxWidth(0.7f),
-                        value = ip.value,
-                        onValueChange = {
-                            ip.value = it
-                        },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        label = { Text("IP Address") }
-                    )
-                    TextField(
-                        modifier = Modifier
-                            .padding(end = 8.dp, top = 8.dp, bottom = 8.dp),
-                        value = port.intValue.toString(),
-                        onValueChange = {
-                            port.intValue = it.toInt()
-                        },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        label = { Text("Port") }
-                    )
-                }
-                Button(
-                    enabled = buttonEnabled.value,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 28.dp),
-                    onClick = {
-                        Log.d("me.kavishdevar.openrgb","Show new-server dialog box")
-                        val devName = if (name.value == "") {
-                            ip.value
-                        } else {
-                            name.value
-                        }
-                        sharedPref
-                            .edit()
-                            .putString(devName, "${ip.value}:${port.intValue}")
-                            .apply()
-                        restart.value = true
-                    }
-                )
-                {
-                    Text("Save")
-                }
-            }
-            if (restart.value) {
-                Main(sharedPref =  sharedPref ,modifier = modifier)
-                restart.value = false
-            }
-        }
-        showNewServerDialog.value = false
-    }
+    )
 }
 
 @Composable
