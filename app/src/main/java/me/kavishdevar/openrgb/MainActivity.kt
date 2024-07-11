@@ -29,11 +29,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -132,6 +134,8 @@ fun Main(sharedPref: SharedPreferences) {
     val clientConnected = remember { mutableStateOf(false) }
     val servers=sharedPref.all.keys
     val readyToCreate = remember { mutableStateOf(false) }
+
+    val temp = remember { mutableStateOf(false) }
     Scaffold(modifier = Modifier.fillMaxSize(),
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
@@ -184,15 +188,16 @@ fun Main(sharedPref: SharedPreferences) {
                         DropdownMenu(
                             expanded = showDropDown.value,
                             onDismissRequest = { showDropDown.value = false }) {
-//                                        DropdownMenuItem(
-//                                            text = {
-//                                                Text("Connect to a server (without saving)")
-//                                            },
-//                                            trailingIcon = { Icon(Icons.Default.Refresh, null) },
-//                                            onClick = {
-//                                                showTempIPDialog.value = true
-//                                            }
-//                                        )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text("Connect to a server (without saving)")
+                                    },
+                                    trailingIcon = { Icon(Icons.Default.Refresh, null) },
+                                    onClick = {
+                                        temp.value = true
+                                        showNewServerDialog.value = true
+                                    }
+                                )
                         }
                     }
                 }
@@ -313,6 +318,97 @@ fun Main(sharedPref: SharedPreferences) {
                         if (editing.value) {
                             sharedPref.edit().remove(selectedServer.value).apply()
                         }
+                        if (temp.value) {
+                            Dialog(
+                                onDismissRequest = {
+                                    temp.value = false
+                                },
+                                properties = DialogProperties(usePlatformDefaultWidth = false)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(30.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val ip = remember { mutableStateOf("") }
+                                    val port = remember { mutableIntStateOf(6742) }
+
+                                    val restart = remember { mutableStateOf(false) }
+
+                                    val buttonEnabled = remember { mutableStateOf(false) }
+                                    if (ip.value != "") {
+                                        buttonEnabled.value = true
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "Connect to Device",
+                                            modifier = Modifier
+                                                .padding(
+                                                    start = 2.dp,
+                                                    end = 2.dp,
+                                                    top = 24.dp,
+                                                    bottom = 8.dp
+                                                )
+                                                .align(Alignment.CenterHorizontally),
+                                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 2,
+                                            fontFamily = MaterialTheme.typography.labelLarge.fontFamily,
+                                            fontWeight = MaterialTheme.typography.labelLarge.fontWeight,
+                                            fontStyle = MaterialTheme.typography.labelLarge.fontStyle,
+                                        )
+                                        Row {
+                                            TextField(
+                                                modifier = Modifier
+                                                    .padding(start = 8.dp, top = 8.dp, end = 8.dp)
+                                                    .fillMaxWidth(0.7f),
+                                                value = ip.value,
+                                                onValueChange = {
+                                                    ip.value = it
+                                                },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                label = { Text("IP Address") }
+                                            )
+                                            TextField(
+                                                modifier = Modifier
+                                                    .padding(end = 8.dp, top = 8.dp, bottom = 8.dp),
+                                                value = port.intValue.toString(),
+                                                onValueChange = {
+                                                    port.intValue = it.toInt()
+                                                },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                label = { Text("Port") }
+                                            )
+                                        }
+                                        Button(
+                                            enabled = buttonEnabled.value,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(
+                                                    start = 10.dp,
+                                                    end = 10.dp,
+                                                    top = 10.dp,
+                                                    bottom = 28.dp
+                                                ),
+                                            onClick = {
+                                                Log.d("me.kavishdevar.openrgb","Show new-server dialog box")
+                                                sharedPref
+                                                    .edit()
+                                                    .putString("tempIP", "${ip.value}:${port.intValue}")
+                                                    .apply()
+                                                restart.value = true
+                                                editing.value=false
+                                            }
+                                        )
+                                        {
+                                            Text("Connect")
+                                        }
+                                    }
+                                    if (restart.value) {
+                                        Main(sharedPref =  sharedPref)
+                                        restart.value = false
+                                    }
+                                }
+                            }
+                        }
                         Box(
                             modifier = Modifier
                                 .padding(30.dp),
@@ -346,6 +442,7 @@ fun Main(sharedPref: SharedPreferences) {
                                     fontStyle = MaterialTheme.typography.labelLarge.fontStyle,
                                 )
                                 TextField(
+                                    enabled = temp.value,
                                     modifier = Modifier
                                         .padding(8.dp)
                                         .fillMaxWidth(),
